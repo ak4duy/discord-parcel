@@ -43,9 +43,9 @@ Optional passphrase encryption protects file contents before they leave your dev
 
 | Step            | Action                                                                                       |
 | :-------------- | :------------------------------------------------------------------------------------------- |
-| **1 · Send**    | Choose a file, optionally enable encryption, and upload its parts with your Discord bot.     |
-| **2 · Share**   | Save the transfer file or copy the message link. Share any encryption passphrase separately. |
-| **3 · Restore** | Open the transfer in Receive, choose a destination, and select **Download and Restore**.     |
+| **1. Send**    | Choose a file, optionally enable encryption, and upload its parts with your Discord bot.     |
+| **2. Share**   | Save the transfer file or copy the message link. Share any encryption passphrase separately. |
+| **3. Restore** | Open the transfer in Receive, choose a destination, and select **Download and Restore**.     |
 
 > To resume an upload, choose the same file, channel, bot, and part size again.
 > Encrypted uploads also need the same passphrase.
@@ -99,14 +99,13 @@ The simplest handoff is the **`.parcel.json` file**.
 
 ## Encryption and privacy
 
-| Property           | Implementation                                                                                                   |
-| :----------------- | :--------------------------------------------------------------------------------------------------------------- |
-| Encryption         | AES-256-GCM with random per-part nonces.                                                                         |
-| Key derivation     | PBKDF2-HMAC-SHA256, 600,000 iterations, with a random salt.                                                      |
-| Passphrase storage | Passphrases are not saved.                                                                                       |
-| Download cache     | Encrypted parts remain encrypted on disk.                                                                        |
-| Restoration        | Decryption/authentication and checksum checks precede final output publication.                                  |
-| Compatibility      | Encrypted manifests use version 2 and need an encryption-capable Parcel release; version 1 manifests still work. |
+| Property           | Implementation                                                                  |
+| :----------------- | :------------------------------------------------------------------------------ |
+| Encryption         | AES-256-GCM with random per-part nonces.                                        |
+| Key derivation     | PBKDF2-HMAC-SHA256, 600,000 iterations, with a random salt.                     |
+| Passphrase storage | Passphrases are not saved.                                                      |
+| Download cache     | Encrypted parts remain encrypted on disk.                                       |
+| Restoration        | Decryption/authentication and checksum checks precede final output publication. |
 
 > [!WARNING]
 > Encryption protects **file contents**, not all metadata.
@@ -184,8 +183,7 @@ cargo check --no-default-features
 
 ## License
 
-Copyright (c) 2026 **ak4duy**. Licensed under the
-[GNU General Public License, version 3 only](LICENSE) (`GPL-3.0-only`).
+Licensed under the [GNU General Public License, version 3 only](LICENSE) (`GPL-3.0-only`).
 
 ---
 
