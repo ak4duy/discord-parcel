@@ -39,6 +39,8 @@ pub struct UploadResult {
 struct UploadState {
     manifest: Manifest,
     manifest_message_id: Option<String>,
+    #[serde(default = "uuid::Uuid::new_v4")]
+    notification_id: uuid::Uuid,
 }
 
 pub fn upload(
@@ -99,15 +101,14 @@ async fn upload_async(
 
     let key = parcel::digest(
         format!(
-            "{}:{}:{}:{}:{}:{}:{}:{:?}",
+            "{}:{}:{}:{}:{}:{}:{}",
             manifest.sha256,
             manifest.size,
             manifest.chunk_size,
             manifest.filename,
             channel.id,
             parcel::digest(connection.token.as_bytes()),
-            options.password.is_some(),
-            options.recipient
+            options.password.is_some()
         )
         .as_bytes(),
     );
@@ -119,6 +120,7 @@ async fn upload_async(
     let mut state = UploadState {
         manifest,
         manifest_message_id: None,
+        notification_id: uuid::Uuid::new_v4(),
     };
 
     if state_path.exists() {
@@ -129,16 +131,22 @@ async fn upload_async(
         saved.manifest.validate()?;
 
         ensure!(
-            saved.manifest.sha256 == state.manifest.sha256
-                && saved.manifest.size == state.manifest.size
-                && saved.manifest.chunk_size == chunk_size
-                && saved.manifest.filename == state.manifest.filename
-                && saved.manifest.channel_id == state.manifest.channel_id,
+            checkpoint_matches(&saved.manifest, &state.manifest, options.password.is_some()),
             "Upload checkpoint does not match this file."
         );
 
         state = saved;
     }
+
+    let mut legacy_lock = None;
+    if !state_path.exists()
+        && let Some((saved, lock)) =
+            legacy_checkpoint(storage, &state.manifest, options, &http, channel.id, cancel).await?
+    {
+        state = saved;
+        legacy_lock = Some(lock);
+    }
+    let _legacy_lock = legacy_lock;
 
     if state.manifest.encryption.is_none() && options.password.is_some() {
         state.manifest.version = 2;
@@ -202,6 +210,7 @@ async fn upload_async(
             remote
         } else {
             state.manifest_message_id = None;
+            state.notification_id = uuid::Uuid::new_v4();
 
             file.seek(SeekFrom::Start(index as u64 * chunk_size))?;
 
@@ -302,16 +311,25 @@ async fn upload_async(
         state.manifest.size,
     ));
 
+    let content = options
+        .recipient
+        .map(|id| format!("<@{id}> Your parcel is ready!"))
+        .unwrap_or_default();
+
     if let Some(message_id) = &state.manifest_message_id {
         let message_id = parse_message_id(message_id)?;
+        let existing = message_if_exists(&http, channel.id, message_id).await?;
 
-        if message_if_exists(&http, channel.id, message_id)
-            .await?
-            .is_none()
+        if existing
+            .as_ref()
+            .is_none_or(|message| message.content != content)
         {
             state.manifest_message_id = None;
+            state.notification_id = uuid::Uuid::new_v4();
         }
     }
+
+    save_state(&state_path, &state)?;
 
     if state.manifest_message_id.is_none() {
         let embed = CreateEmbed::new()
@@ -328,7 +346,13 @@ async fn upload_async(
             );
 
         let nonce = parcel::digest(
-            format!("{}:manifest:{}", state.manifest.id, parcel::digest(&bytes)).as_bytes(),
+            format!(
+                "{}:manifest:{}:{}",
+                state.manifest.id,
+                state.notification_id,
+                parcel::digest(&bytes)
+            )
+            .as_bytes(),
         );
 
         let mentions = CreateAllowedMentions::new()
@@ -337,12 +361,7 @@ async fn upload_async(
             .all_roles(false)
             .users(options.recipient.map(UserId::new));
         let builder = CreateMessage::new()
-            .content(
-                options
-                    .recipient
-                    .map(|id| format!("<@{id}> Your parcel is ready!"))
-                    .unwrap_or_default(),
-            )
+            .content(content)
             .allowed_mentions(mentions)
             .embed(embed)
             .nonce(Nonce::String(nonce[..24].to_owned()))
@@ -375,6 +394,106 @@ async fn upload_async(
         ),
         parts: state.manifest.parts.len(),
     })
+}
+
+fn checkpoint_matches(candidate: &Manifest, manifest: &Manifest, encrypted: bool) -> bool {
+    candidate.sha256 == manifest.sha256
+        && candidate.size == manifest.size
+        && candidate.chunk_size == manifest.chunk_size
+        && candidate.filename == manifest.filename
+        && candidate.channel_id == manifest.channel_id
+        && candidate.encryption.is_some() == encrypted
+}
+
+async fn legacy_checkpoint(
+    storage: &Path,
+    manifest: &Manifest,
+    options: &SendOptions,
+    http: &Http,
+    channel: ChannelId,
+    cancel: &Cancel,
+) -> Result<Option<(UploadState, File)>> {
+    let directory = storage.join("uploads");
+    if !directory.exists() {
+        return Ok(None);
+    }
+
+    let mut candidates = Vec::new();
+    for entry in fs::read_dir(directory)? {
+        cancel.check()?;
+        let path = entry?.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            continue;
+        }
+        let saved = parcel::read_bounded(&path, MAX_MANIFEST_SIZE)
+            .and_then(|bytes| Ok(serde_json::from_slice::<UploadState>(&bytes)?));
+        let Ok(saved) = saved else {
+            continue;
+        };
+        let candidate = &saved.manifest;
+        if candidate.validate().is_err()
+            || !checkpoint_matches(candidate, manifest, options.password.is_some())
+        {
+            continue;
+        }
+        if let Some(encryption) = &candidate.encryption
+            && encryption
+                .unlock(options.password.as_deref().unwrap_or_default())
+                .is_err()
+        {
+            continue;
+        }
+        let completed = candidate
+            .parts
+            .iter()
+            .filter(|part| part.remote.is_some())
+            .count();
+        if completed > 0 {
+            candidates.push((completed, path));
+        }
+    }
+
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.0));
+    cancel.check()?;
+    let bot = http
+        .get_current_user()
+        .await
+        .context("Could not verify the upload bot.")?;
+
+    for (_, path) in candidates {
+        cancel.check()?;
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        if stem.len() != 64 || !stem.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            continue;
+        }
+        let lock = parcel::lock_transfer(&storage.join("locks").join(format!("upload-{stem}")))?;
+        let saved: UploadState =
+            serde_json::from_slice(&parcel::read_bounded(&path, MAX_MANIFEST_SIZE)?)?;
+        saved.manifest.validate()?;
+        if !checkpoint_matches(&saved.manifest, manifest, options.password.is_some()) {
+            continue;
+        }
+        let Some(remote) = saved
+            .manifest
+            .parts
+            .iter()
+            .find_map(|part| part.remote.as_ref())
+        else {
+            continue;
+        };
+        let message =
+            message_if_exists(http, channel, parse_message_id(&remote.message_id)?).await?;
+        if message.is_some_and(|message| message.author.id == bot.id) {
+            return Ok(Some((saved, lock)));
+        }
+    }
+
+    Ok(None)
 }
 
 fn save_state(path: &Path, state: &UploadState) -> Result<()> {
