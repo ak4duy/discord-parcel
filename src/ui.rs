@@ -834,8 +834,7 @@ impl Ui {
         page.add(&group);
         let help = adw::PreferencesGroup::builder()
             .description(
-                "Required permissions: View Channel, Send Messages, Attach Files, and Read Message History.\n
-                To read another bot’s messages, also enable Message Content Intent.",
+                "Required permissions: View Channel, Send Messages, Attach Files, and Read Message History.\nTo read another bot’s messages, also enable Message Content Intent.",
             )
             .build();
         let docs = gtk::LinkButton::with_label(
