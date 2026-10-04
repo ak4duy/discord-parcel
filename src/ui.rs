@@ -4,6 +4,7 @@ use discord_parcel::{
     discord::Discord,
     parcel::{self, Cancel, Manifest, Progress},
     transfer::{self, Connection},
+    updates,
 };
 use gtk::{gio, glib};
 use serde::{Deserialize, Serialize};
@@ -114,6 +115,7 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
     connection_button.set_tooltip_text(Some("Connection settings"));
     header.pack_start(&connection_button);
     let menu = gio::Menu::new();
+    menu.append(Some("Check for Updates"), Some("win.check-updates"));
     menu.append(Some("About"), Some("win.about"));
     let menu_button = gtk::MenuButton::builder()
         .icon_name("open-menu-symbolic")
@@ -460,6 +462,13 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
             }
         });
     }
+    let check_updates = gio::SimpleAction::new("check-updates", None);
+    {
+        let copy = ui.clone();
+        check_updates.connect_activate(move |action, _| copy.check_updates(action));
+    }
+    ui.window.add_action(&check_updates);
+
     let about = gio::SimpleAction::new("about", None);
     {
         let copy = ui.clone();
@@ -492,6 +501,90 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
 impl Ui {
     fn toast(&self, text: &str) {
         self.toast.add_toast(adw::Toast::new(text));
+    }
+
+    fn check_updates(self: &Rc<Self>, action: &gio::SimpleAction) {
+        action.set_enabled(false);
+        self.toast("Checking for updates…");
+
+        let (sender, receiver) = async_channel::bounded(1);
+        std::thread::spawn(move || {
+            let result = updates::check().map_err(|error| format!("{error:#}"));
+            let _ = sender.send_blocking(result);
+        });
+
+        let ui = self.clone();
+        let action = action.clone();
+        glib::spawn_future_local(async move {
+            let result = receiver.recv().await.unwrap_or_else(|_| {
+                Err("The update check stopped unexpectedly. Try again.".into())
+            });
+            action.set_enabled(true);
+
+            let current = env!("CARGO_PKG_VERSION");
+            let (title, detail, url, available) = match result {
+                Ok(Some(release)) if release.newer => (
+                    "Update available",
+                    format!(
+                        "Discord Parcel {} is available. You’re running {}.\n\nOpen the release page for downloads and release notes.",
+                        release.version, current
+                    ),
+                    release.url,
+                    true,
+                ),
+                Ok(Some(release)) => (
+                    "You’re up to date",
+                    format!(
+                        "You’re running Discord Parcel {}. The latest published release is {}.",
+                        current, release.version
+                    ),
+                    release.url,
+                    false,
+                ),
+                Ok(None) => (
+                    "No release available",
+                    format!(
+                        "You’re running Discord Parcel {}. No public stable release was found on GitHub.",
+                        current
+                    ),
+                    updates::RELEASES_URL.into(),
+                    false,
+                ),
+                Err(error) => (
+                    "Could not check for updates",
+                    error,
+                    updates::RELEASES_URL.into(),
+                    false,
+                ),
+            };
+
+            let dialog = adw::AlertDialog::builder()
+                .heading(title)
+                .body(&detail)
+                .build();
+            dialog.add_response("close", "Close");
+            dialog.add_response(
+                "release",
+                if available {
+                    "View Update"
+                } else {
+                    "Open Releases"
+                },
+            );
+            dialog.set_close_response("close");
+            if available {
+                dialog.set_response_appearance("release", adw::ResponseAppearance::Suggested);
+            }
+            let copy = ui.clone();
+            dialog.connect_response(Some("release"), move |_, _| {
+                if let Err(error) =
+                    gio::AppInfo::launch_default_for_uri(&url, None::<&gio::AppLaunchContext>)
+                {
+                    copy.toast(&format!("Could not open the release page: {error}"));
+                }
+            });
+            dialog.present(Some(&ui.window));
+        });
     }
 
     fn save_settings(&self) {

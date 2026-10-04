@@ -263,6 +263,7 @@ dependencies = [
  "libadwaita",
  "reqwest",
  "ring",
+ "semver",
  "serde",
  "serde_json",
  "serenity",
