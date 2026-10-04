@@ -1,14 +1,22 @@
-![Discord Parcel logo](data/dev.akaduy.DiscordParcel.svg)
+<p align="center">
+  <img src="data/dev.akaduy.DiscordParcel.svg" alt="Discord Parcel logo" width="112" height="112">
+</p>
 
-# Discord Parcel
+<h1 align="center">Discord Parcel</h1>
 
-**Split, send, and restore files through Discord**
+<p align="center">
+  <strong>Split, send, and restore files through Discord</strong><br>
+  A desktop app built with Rust, GTK4, and libadwaita.
+</p>
 
-A desktop app built with Rust, GTK4, and libadwaita.
-
-[Gallery](#gallery) · [Get started](#get-started) ·
-[Connect Discord](#connect-discord) · [Encryption](#encryption-and-privacy) ·
-[Build](#build-from-source) · [Releases](https://github.com/ak4duy/discord-parcel/releases)
+<p align="center">
+  <a href="#gallery">Gallery</a> ·
+  <a href="#get-started">Get started</a> ·
+  <a href="#connect-discord">Connect Discord</a> ·
+  <a href="#encryption-and-privacy">Encryption</a> ·
+  <a href="#build-from-source">Build</a> ·
+  <a href="https://github.com/ak4duy/discord-parcel/releases">Releases</a>
+</p>
 
 ---
 
@@ -181,4 +189,6 @@ Copyright (c) 2026 **ak4duy**. Licensed under the
 
 ---
 
-_Discord Parcel is an independent project, not affiliated with or endorsed by Discord._
+<p align="center">
+  Discord Parcel is an independent project, not affiliated with or endorsed by Discord.
+</p>
