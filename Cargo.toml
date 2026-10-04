@@ -1,0 +1,64 @@
+[package]
+name = "discord-parcel"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+description = "Split, send, and restore files through Discord"
+license = "GPL-3.0-only"
+
+[features]
+default = ["desktop"]
+desktop = ["dep:gtk", "dep:adw", "dep:async-channel"]
+
+[dependencies]
+adw = { package = "libadwaita", version = "0.9", features = ["v1_5"], optional = true }
+gtk = { package = "gtk4", version = "0.11", features = ["v4_12"], optional = true }
+async-channel = { version = "2", optional = true }
+anyhow = "1"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+serenity = { version = "0.12.5", default-features = false, features = ["http", "model", "builder", "rustls_backend"] }
+tokio = { version = "1", features = ["rt", "time", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+ring = "0.17"
+tempfile = "3"
+uuid = { version = "1", features = ["v4", "serde"] }
+dirs = "6"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+
+[build-dependencies]
+winresource = "0.1"
+
+[profile.dev]
+debug = 0
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[[bin]]
+name = "discord-parcel"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[package.metadata.packager]
+product-name = "Discord Parcel"
+identifier = "dev.akaduy.discord-parcel"
+formats = ["nsis"]
+icons = ["data/windows/app.ico"]
+out-dir = "dist"
+
+target-triple = "x86_64-pc-windows-gnu"
+
+before-packaging-command = """
+cargo build --release \
+  --target x86_64-pc-windows-gnu \
+  --features desktop
+"""
+
+[package.metadata.packager.nsis]
+installer-mode = "currentUser"
+installer-icon = "data/windows/app.ico"

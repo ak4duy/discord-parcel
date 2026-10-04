@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-discord-parcel">
+    <comment>Discord Parcel transfer</comment>
+    <glob pattern="*.parcel.json"/>
+    <sub-class-of type="application/json"/>
+    <icon name="dev.akaduy.DiscordParcel"/>
+  </mime-type>
+</mime-info>

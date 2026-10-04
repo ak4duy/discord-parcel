@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Discord Parcel
+Comment=Split, send, and restore files through Discord
+Exec=discord-parcel %f
+Icon=dev.akaduy.DiscordParcel
+Terminal=false
+Type=Application
+Categories=Network;FileTransfer;GTK;
+Keywords=Discord;Transfer;Split;Join;Files;
+MimeType=application/x-discord-parcel;
+StartupNotify=true

@@ -1,0 +1,8 @@
+# SVG loader registration from gdk-pixbuf-query-loaders (2.44.7).
+# platform.rs replaces @PARCEL_ROOT@ when the installed application starts.
+"@PARCEL_ROOT@/lib/gdk-pixbuf-2.0/2.10.0/loaders/pixbufloader_svg.dll"
+"svg" 6 "gdk-pixbuf" "Scalable Vector Graphics" "LGPL"
+"image/svg+xml" "image/svg" "image/svg-xml" "image/vnd.adobe.svg+xml" "text/xml-svg" "image/svg+xml-compressed" ""
+"svg" "svgz" "svg.gz" ""
+" <svg" "*    " 100
+" <!DOCTYPE svg" "*             " 100

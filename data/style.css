@@ -1,0 +1,12 @@
+button.file-drop {
+  background: alpha(@accent_bg_color, 0.06);
+  border: 2px dashed alpha(@accent_bg_color, 0.35);
+  border-radius: 18px;
+  box-shadow: none;
+}
+button.file-drop:hover {
+  background: alpha(@accent_bg_color, 0.12);
+  border-color: @accent_bg_color;
+}
+.transfer-card { padding: 20px; }
+button.pill { padding: 12px 32px; }

@@ -1,0 +1,7 @@
+/target
+/dist/
+__pycache__/
+/.env
+/.win
+*.parcel.json
+*.part
