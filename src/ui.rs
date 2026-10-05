@@ -34,9 +34,9 @@ struct Outcome {
     link: Option<String>,
 }
 
-enum Event {
+enum Event<T> {
     Progress(Progress),
-    Finished(std::result::Result<Outcome, String>),
+    Finished(std::result::Result<T, String>),
 }
 
 struct Ui {
@@ -663,8 +663,7 @@ impl Ui {
                     ui.refresh_suggestions();
                 }
                 Err(error) => {
-                    ui.connection_row
-                        .set_subtitle("Connection failed · check settings");
+                    ui.connection_row.set_subtitle("Connection failed");
                     ui.toast(&error);
                 }
             }
@@ -939,17 +938,79 @@ impl Ui {
             .decrypt
             .is_active()
             .then(|| self.receive_password.text().to_string());
-        if password.as_ref().is_some_and(String::is_empty) {
-            self.toast("Enter the sender’s decryption passphrase first.");
-            return;
-        }
+        let lookup_token = token.clone();
+        self.run_job_with_completion(
+            move |cancel, progress| {
+                progress(Progress::new("Opening parcel", 0, 0));
+                let manifest = if let Some(path) = &path {
+                    Manifest::read(path)?
+                } else {
+                    transfer::manifest_from_link(&link, &lookup_token, cancel)?
+                };
+                cancel.check()?;
+                Ok(manifest)
+            },
+            move |ui, manifest| {
+                ui.decrypt.set_active(manifest.encryption.is_some());
+                if manifest.encryption.is_some() && password.as_ref().is_none_or(String::is_empty) {
+                    ui.prompt_passphrase(manifest, destination, token);
+                } else {
+                    ui.download_manifest(manifest, destination, token, password);
+                }
+            },
+        );
+    }
+
+    fn prompt_passphrase(self: &Rc<Self>, manifest: Manifest, destination: PathBuf, token: String) {
+        let password = adw::PasswordEntryRow::builder()
+            .title("Decryption passphrase")
+            .build();
+        let group = adw::PreferencesGroup::new();
+        group.add(&password);
+        let dialog = adw::AlertDialog::builder()
+            .heading("This parcel is encrypted")
+            .body(format!(
+                "Enter the sender’s passphrase to restore {}.",
+                manifest.filename
+            ))
+            .extra_child(&group)
+            .build();
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("decrypt", "Decrypt and Download");
+        dialog.set_close_response("cancel");
+        dialog.set_default_response(Some("decrypt"));
+        dialog.set_response_appearance("decrypt", adw::ResponseAppearance::Suggested);
+        dialog.set_response_enabled("decrypt", false);
+        let weak_dialog = dialog.downgrade();
+        password.connect_changed(move |entry| {
+            if let Some(dialog) = weak_dialog.upgrade() {
+                dialog.set_response_enabled("decrypt", !entry.text().is_empty());
+            }
+        });
+        let ui = self.clone();
+        dialog.connect_response(Some("decrypt"), move |_, _| {
+            let passphrase = password.text().to_string();
+            password.set_text("");
+            if !passphrase.is_empty() {
+                ui.download_manifest(
+                    manifest.clone(),
+                    destination.clone(),
+                    token.clone(),
+                    Some(passphrase),
+                );
+            }
+        });
+        dialog.present(Some(&self.window));
+    }
+
+    fn download_manifest(
+        self: &Rc<Self>,
+        manifest: Manifest,
+        destination: PathBuf,
+        token: String,
+        password: Option<String>,
+    ) {
         self.run_job(move |cancel, progress| {
-            progress(Progress::new("Opening parcel", 0, 0));
-            let manifest = if let Some(path) = &path {
-                Manifest::read(path)?
-            } else {
-                transfer::manifest_from_link(&link, &token, cancel)?
-            };
             let output = transfer::download(
                 &manifest,
                 password.as_deref(),
@@ -1082,6 +1143,15 @@ impl Ui {
     where
         F: FnOnce(&Cancel, &dyn Fn(Progress)) -> Result<Outcome> + Send + 'static,
     {
+        self.run_job_with_completion(work, |ui, outcome| ui.show_outcome(outcome));
+    }
+
+    fn run_job_with_completion<T, F, C>(self: &Rc<Self>, work: F, complete: C)
+    where
+        T: Send + 'static,
+        F: FnOnce(&Cancel, &dyn Fn(Progress)) -> Result<T> + Send + 'static,
+        C: FnOnce(&Rc<Self>, T) + 'static,
+    {
         if self.busy.replace(true) {
             return;
         }
@@ -1130,7 +1200,7 @@ impl Ui {
                         ui.progress_box.set_visible(false);
 
                         match result {
-                            Ok(outcome) => ui.show_outcome(outcome),
+                            Ok(outcome) => complete(&ui, outcome),
                             Err(error) => {
                                 let stopped = ui.cancel.borrow().check().is_err();
                                 ui.show_error(stopped, &error);
