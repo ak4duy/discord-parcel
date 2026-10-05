@@ -256,8 +256,6 @@ async fn upload_async(
                 .await
                 .context("Could not upload a parcel part to Discord.")?;
 
-            cancel.check()?;
-
             let attachment = message
                 .attachments
                 .into_iter()
@@ -278,6 +276,7 @@ async fn upload_async(
         done += state.manifest.parts[index].size;
 
         save_state(&state_path, &state)?;
+        cancel.check()?;
 
         progress(Progress::new(
             format!(
@@ -377,12 +376,12 @@ async fn upload_async(
             .await
             .context("Could not publish the parcel manifest to Discord.")?;
 
-        cancel.check()?;
-
         state.manifest_message_id = Some(message.id.to_string());
 
         save_state(&state_path, &state)?;
     }
+
+    cancel.check()?;
 
     Ok(UploadResult {
         manifest_path,
