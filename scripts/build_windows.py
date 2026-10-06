@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Build a minimal, self-contained Windows x64 NSIS installer on Linux."""
 
 import argparse
 import hashlib
@@ -9,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import tomllib
@@ -186,6 +186,25 @@ def uninstall_manifest(bundle):
     return "\n".join(lines) + "\n"
 
 
+def create_portable_archive(bundle, work, version):
+    """Add empty local-data directories to the freshly staged runtime and zip it."""
+    for name in ("downloads", "locks", "sent", "uploads"):
+        (bundle / name).mkdir()
+    zip_epoch = datetime(1980, 1, 1).timestamp()
+    for path in bundle.rglob("*"):
+        stat = path.stat()
+        if stat.st_mtime < zip_epoch:
+            os.utime(path, (stat.st_atime, zip_epoch))
+    return Path(
+        shutil.make_archive(
+            str(work / f"discord-parcel-{version}-windows-x64-Portable"),
+            "zip",
+            root_dir=bundle.parent,
+            base_dir=bundle.name,
+        )
+    )
+
+
 def nsis_command():
     env = os.environ.copy()
     compiler = shutil.which("makensis")
@@ -270,7 +289,7 @@ def main():
     dependencies = dependency_closure([exe, prefix / SVG_MODULE], prefix / "bin")
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
-    name = f"DiscordParcel-{version}-windows-x64-Setup"
+    name = f"discord-parcel-{version}-windows-x64-Setup"
     with tempfile.TemporaryDirectory(prefix=".windows-setup-", dir=dist) as temporary:
         work = Path(temporary)
         bundle = work / "DiscordParcel"
@@ -331,12 +350,17 @@ def main():
             )
             + "\n"
         )
+        portable = create_portable_archive(bundle, work, version)
         output.replace(dist / output.name)
         manifest.replace(dist / manifest.name)
+        portable.replace(dist / portable.name)
     result = dist / f"{name}.exe"
+    portable_result = dist / portable.name
     print(
         f"\nInstaller: {result}\n"
-        f"Download: {result.stat().st_size / 1024**2:.1f} MiB\n"
+        f"Installer download: {result.stat().st_size / 1024**2:.1f} MiB\n"
+        f"Portable: {portable_result}\n"
+        f"Portable download: {portable_result.stat().st_size / 1024**2:.1f} MiB\n"
         f"Installed files: {installed_size / 1024**2:.1f} MiB\n"
         f"Runtime DLLs/modules: {len(dependencies) + 1}"
     )
