@@ -577,9 +577,7 @@ impl Ui {
             }
             let copy = ui.clone();
             dialog.connect_response(Some("release"), move |_, _| {
-                if let Err(error) =
-                    gio::AppInfo::launch_default_for_uri(&url, None::<&gio::AppLaunchContext>)
-                {
+                if let Err(error) = open::that(&url) {
                     copy.toast(&format!("Could not open the release page: {error}"));
                 }
             });
@@ -840,6 +838,15 @@ impl Ui {
             "https://discord.com/developers/applications",
             "Open Discord Developer Portal",
         );
+        let ui = self.clone();
+        docs.connect_activate_link(move |button| {
+            if let Err(error) = open::that(button.uri().as_str()) {
+                ui.toast(&format!(
+                    "Could not open the Discord Developer Portal: {error}"
+                ));
+            }
+            glib::Propagation::Stop
+        });
         help.add(&docs);
         let apply = gtk::Button::with_label("Save Connection");
         apply.add_css_class("suggested-action");
@@ -1080,13 +1087,10 @@ impl Ui {
                 }
             }
             "show" => {
-                if let Some(parent) = file.as_ref().and_then(|path| path.parent()) {
-                    let uri = gio::File::for_path(parent).uri();
-                    if let Err(error) =
-                        gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>)
-                    {
-                        ui.toast(&error.to_string());
-                    }
+                if let Some(parent) = file.as_ref().and_then(|path| path.parent())
+                    && let Err(error) = open::that(parent)
+                {
+                    ui.toast(&format!("Could not open the folder: {error}"));
                 }
             }
             _ => {}
