@@ -1,6 +1,6 @@
 #[cfg(not(windows))]
 pub fn initialize() -> anyhow::Result<()> {
-    Ok(())
+    discord_parcel::parcel::initialize_data_dir()
 }
 
 #[cfg(windows)]
@@ -8,6 +8,8 @@ pub fn initialize() -> anyhow::Result<()> {
     use anyhow::Context;
     use discord_parcel::parcel;
     use std::{env, fs};
+
+    parcel::initialize_data_dir()?;
 
     let executable = env::current_exe().context("Could not locate the application folder.")?;
     let root = executable

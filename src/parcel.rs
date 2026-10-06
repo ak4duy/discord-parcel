@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::option::Option::Some;
 use std::{
     fs::{self, File},
     io::{Read, Write},
@@ -408,10 +409,58 @@ pub fn assemble(
     Ok(output)
 }
 
+struct DataLocation {
+    path: PathBuf,
+    portable: bool,
+}
+
+fn data_location() -> &'static DataLocation {
+    static LOCATION: std::sync::OnceLock<DataLocation> = std::sync::OnceLock::new();
+
+    LOCATION.get_or_init(|| {
+        if let Ok(executable) = std::env::current_exe()
+            && let Some(folder) = executable.parent()
+        {
+            let has_settings = folder.join("settings.json").is_file();
+            let has_folders = ["downloads", "locks", "sent", "uploads"]
+                .iter()
+                .all(|name| folder.join(name).is_dir());
+
+            if has_settings || has_folders {
+                return DataLocation {
+                    path: folder.to_path_buf(),
+                    portable: true,
+                };
+            }
+        }
+
+        DataLocation {
+            path: dirs::data_local_dir()
+                .unwrap_or_else(std::env::temp_dir)
+                .join("discord-parcel"),
+            portable: false,
+        }
+    })
+}
+
 pub fn data_dir() -> PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join("discord-parcel")
+    data_location().path.clone()
+}
+
+pub fn initialize_data_dir() -> Result<()> {
+    let location = data_location();
+
+    if location.portable {
+        let _probe = tempfile::NamedTempFile::new_in(&location.path).with_context(|| {
+            format!(
+                "Cannot write portable data to {}. \
+                     Move the application to a writable folder.",
+                location.path.display()
+            )
+        })?;
+    }
+
+    Ok(())
 }
 
 pub fn output_filename(filename: &str) -> String {
