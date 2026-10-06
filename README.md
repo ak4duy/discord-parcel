@@ -41,8 +41,8 @@ Optional passphrase encryption protects file contents before they leave your dev
 
 ### How it works
 
-| Step            | Action                                                                                       |
-| :-------------- | :------------------------------------------------------------------------------------------- |
+| Step           | Action                                                                                       |
+| :------------- | :------------------------------------------------------------------------------------------- |
 | **1. Send**    | Choose a file, optionally enable encryption, and upload its parts with your Discord bot.     |
 | **2. Share**   | Save the transfer file or copy the message link. Share any encryption passphrase separately. |
 | **3. Restore** | Open the transfer in Receive, choose a destination, and select **Download and Restore**.     |
@@ -60,9 +60,12 @@ Optional passphrase encryption protects file contents before they leave your dev
 
 ### Windows
 
-Download a Windows x64 **Setup.exe** from
-[Releases](https://github.com/ak4duy/discord-parcel/releases),
-or [build your own installer](#windows-installer-from-linux).
+Download a Windows x64 package from
+[Releases](https://github.com/ak4duy/discord-parcel/releases):
+
+- **Installer (`Setup.exe`)**: install the app with a Start menu shortcut and uninstaller.
+- **Portable (`Portable.zip`)**: extract the entire archive to a writable location
+  and run `DiscordParcel/discord-parcel.exe`.
 
 ### Linux
 
@@ -76,8 +79,14 @@ attachment URLs remain valid.
 
 1. Create an application and bot in the
    [Discord Developer Portal](https://discord.com/developers/applications).
-2. Invite the bot to your server with **View Channel**, **Send Messages**,
-   **Attach Files**, **Read Message History** and **Message Content Intent**.
+
+2.1 Invite the bot to your server with **View Channel**, **Send Messages**,
+**Attach Files**, **Read Message History** and **Message Content Intent**.
+
+2.2 Or simple edit `<CHANGE_TO_YOUR_APPLICATION_ID>` (**Application ID** inside _General Information_):
+
+> `https://discord.com/oauth2/authorize?client_id=<CHANGE_TO_YOUR_APPLICATION_ID>&permissions=101376&integration_type=0&scope=bot`
+
 3. Enable Discord's **Developer Mode** and copy the destination channel's ID.
 4. Open **Connection settings** in application. Enter the bot token and
    channel ID, then save.
