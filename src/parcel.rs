@@ -187,7 +187,12 @@ impl Manifest {
     }
 
     pub fn cache_key(&self) -> Result<String> {
-        Ok(digest(&serde_json::to_vec(self)?))
+        let mut identity = self.clone();
+        identity.channel_id = None;
+        for part in &mut identity.parts {
+            part.remote = None;
+        }
+        Ok(digest(&serde_json::to_vec(&identity)?))
     }
 }
 
