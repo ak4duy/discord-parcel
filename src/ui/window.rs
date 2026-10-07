@@ -21,6 +21,7 @@ use super::{
     Ui,
     pages::{ReceivePage, SendPage, TransferProgress},
     settings::Settings,
+    storage,
 };
 
 pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
@@ -264,6 +265,17 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
 }
 
 fn install_actions(ui: &Rc<Ui>) {
+    let storage = gio::SimpleAction::new("storage", None);
+    {
+        let window = ui.window.downgrade();
+        storage.connect_activate(move |_, _| {
+            if let Some(window) = window.upgrade() {
+                storage::present(&window);
+            }
+        });
+    }
+    ui.window.add_action(&storage);
+
     let check_updates = gio::SimpleAction::new("check-updates", None);
     {
         let copy = ui.clone();

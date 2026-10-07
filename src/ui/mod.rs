@@ -5,6 +5,7 @@ mod pages;
 mod receive;
 mod send;
 mod settings;
+mod storage;
 mod updates;
 mod widgets;
 mod window;

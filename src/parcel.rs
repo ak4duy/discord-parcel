@@ -447,6 +447,10 @@ pub fn data_dir() -> PathBuf {
     data_location().path.clone()
 }
 
+pub fn is_portable() -> bool {
+    data_location().portable
+}
+
 pub fn initialize_data_dir() -> Result<()> {
     let location = data_location();
 
