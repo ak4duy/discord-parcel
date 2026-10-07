@@ -1,20 +1,27 @@
+use super::Ui;
 use adw::prelude::*;
 use discord_parcel::{parcel, storage};
 use gtk::glib;
-use std::{cell::Cell, path::PathBuf, rc::Rc};
+use std::{
+    cell::Cell,
+    path::PathBuf,
+    rc::{Rc, Weak},
+};
 
 struct StorageView {
+    ui: Weak<Ui>,
     dialog: glib::WeakRef<adw::PreferencesDialog>,
     root: PathBuf,
     rows: [adw::ActionRow; 5],
-    status: gtk::Label,
+
     refresh: gtk::Button,
     clear: gtk::Button,
     busy: Cell<bool>,
+    closed: Cell<bool>,
     has_downloads: Cell<bool>,
 }
 
-pub(super) fn present(window: &adw::ApplicationWindow) {
+pub(super) fn present(ui: &Rc<Ui>) {
     let root = parcel::data_dir();
     let dialog = adw::PreferencesDialog::builder()
         .title("Storage")
@@ -82,38 +89,31 @@ pub(super) fn present(window: &adw::ApplicationWindow) {
         .sensitive(false)
         .build();
     cleanup.add(&clear);
-    let status = gtk::Label::builder()
-        .label("Calculating storage usage…")
-        .wrap(true)
-        .xalign(0.0)
-        .selectable(true)
-        .margin_top(12)
-        .build();
-    cleanup.add(&status);
+
     page.add(&cleanup);
     dialog.add(&page);
 
     let view = Rc::new(StorageView {
+        ui: Rc::downgrade(ui),
         dialog: dialog.downgrade(),
         root,
         rows,
-        status,
+
         refresh,
         clear,
         busy: Cell::new(false),
+        closed: Cell::new(false),
         has_downloads: Cell::new(false),
     });
     {
         let root = view.root.clone();
-        let weak_dialog = dialog.downgrade();
+        let weak_ui = Rc::downgrade(ui);
         open.connect_clicked(move |_| {
             let result = std::fs::create_dir_all(&root).and_then(|()| open::that(&root));
             if let Err(error) = result
-                && let Some(dialog) = weak_dialog.upgrade()
+                && let Some(ui) = weak_ui.upgrade()
             {
-                dialog.add_toast(adw::Toast::new(&format!(
-                    "Could not open the data folder: {error}"
-                )));
+                ui.toast(&format!("Could not open the data folder: {error}"));
             }
         });
     }
@@ -133,11 +133,12 @@ pub(super) fn present(window: &adw::ApplicationWindow) {
             }
         });
     }
-    view.update(false);
+    let closing_view = view.clone();
     dialog.connect_closed(move |_| {
-        let _ = &view;
+        closing_view.closed.set(true);
     });
-    dialog.present(Some(window));
+    dialog.present(Some(&ui.window));
+    view.update(false);
 }
 
 impl StorageView {
@@ -175,11 +176,14 @@ impl StorageView {
     }
 
     fn update(self: &Rc<Self>, clear: bool) {
-        if self.busy.get() {
+        if self.busy.get() || self.closed.get() {
             return;
         }
+        let Some(ui) = self.ui.upgrade() else {
+            return;
+        };
         self.set_busy(true);
-        self.status.set_label(if clear {
+        ui.toast(if clear {
             "Clearing inactive download caches…"
         } else {
             "Calculating storage usage…"
@@ -195,11 +199,17 @@ impl StorageView {
         });
         let view = self.clone();
         glib::spawn_future_local(async move {
-            match receiver.recv().await {
+            let result = receiver.recv().await;
+            if view.closed.get() {
+                return;
+            }
+            let Some(ui) = view.ui.upgrade() else {
+                return;
+            };
+            match result {
                 Ok((cleanup, usage)) => {
-                    let mut messages = Vec::new();
                     if let Some(cleanup) = cleanup {
-                        messages.push(match cleanup {
+                        ui.toast(&match cleanup {
                             Ok(report) => format!(
                                 "Removed {} from {} download cache(s). Skipped {} active, empty, or unrecognized entry/entries. Failed to clear {} entry/entries.",
                                 parcel::human_size(report.removed_bytes),
@@ -208,7 +218,7 @@ impl StorageView {
                                 report.failed_caches,
                             ),
                             Err(error) => format!(
-                                "Cleanup could not finish: {error}\nSome caches may already have been cleared."
+                                "Cleanup could not finish: {error}. Some caches may already have been cleared."
                             ),
                         });
                     }
@@ -227,8 +237,8 @@ impl StorageView {
                                 row.set_subtitle(&parcel::human_size(bytes));
                             }
                             view.has_downloads.set(usage.downloads_bytes > 0);
-                            if messages.is_empty() {
-                                messages.push("Usage updated.".into());
+                            if !clear {
+                                ui.toast("Usage updated.");
                             }
                         }
                         Err(error) => {
@@ -236,13 +246,12 @@ impl StorageView {
                                 row.set_subtitle("Unavailable");
                             }
                             view.has_downloads.set(false);
-                            messages.push(format!("Could not measure storage: {error}"));
+                            ui.toast(&format!("Could not measure storage: {error}"));
                         }
                     }
-                    view.status.set_label(&messages.join("\n\n"));
                 }
                 Err(_) => {
-                    view.status.set_label("The storage operation stopped unexpectedly. Refresh to check usage before trying again.");
+                    ui.toast("The storage operation stopped unexpectedly. Refresh to check usage before trying again.");
                 }
             }
             view.set_busy(false);
