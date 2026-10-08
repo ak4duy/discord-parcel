@@ -28,8 +28,11 @@ tempfile = "3"
 uuid = { version = "1", features = ["v4", "serde"] }
 dirs = "6"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_Storage_FileSystem"] }
 
 [build-dependencies]
 winresource = "0.1"

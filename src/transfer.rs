@@ -611,6 +611,14 @@ async fn download_async(
     let cache = storage.join("downloads").join(key);
 
     fs::create_dir_all(&cache)?;
+    let cached = crate::disk_space::check_download(
+        manifest,
+        encryption_key.as_ref(),
+        &cache,
+        destination,
+        cancel,
+        progress,
+    )?;
 
     let channel_id = manifest
         .channel_id
@@ -624,7 +632,7 @@ async fn download_async(
 
     let mut done = 0;
 
-    for part in &manifest.parts {
+    for (part, &cached) in manifest.parts.iter().zip(&cached) {
         cancel.check()?;
         let wire_size = part.size
             + if encryption_key.is_some() {
@@ -643,7 +651,7 @@ async fn download_async(
             manifest.size,
         ));
 
-        if parcel::read_cached_part(manifest, &cache, part, encryption_key.as_ref()).is_err() {
+        if !cached {
             let remote = part.remote.as_ref().unwrap();
 
             let bytes = match download_discord_url(&remote.url, wire_size, cancel).await {
@@ -706,6 +714,8 @@ async fn download_async(
         ));
     }
 
+    cancel.check()?;
+    crate::disk_space::check_output(destination, manifest.size)?;
     let output = parcel::assemble(
         manifest,
         encryption_key.as_ref(),

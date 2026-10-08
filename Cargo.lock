@@ -261,6 +261,7 @@ dependencies = [
  "dirs",
  "gtk4",
  "libadwaita",
+ "libc",
  "open",
  "reqwest",
  "ring",
