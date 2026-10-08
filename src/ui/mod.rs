@@ -1,3 +1,4 @@
+mod channel_transfers;
 mod connection;
 mod dialogs;
 mod jobs;
@@ -12,6 +13,7 @@ mod window;
 
 pub use window::present;
 
+use adw::prelude::*;
 use discord_parcel::{parcel::Cancel, transfer::Connection};
 use std::{
     cell::{Cell, RefCell},
@@ -64,6 +66,15 @@ struct Ui {
 
 impl Ui {
     fn toast(&self, text: &str) {
-        self.toast.add_toast(adw::Toast::new(text));
+        let toast = adw::Toast::new(text);
+        if let Some(dialog) = self
+            .window
+            .visible_dialog()
+            .and_then(|dialog| dialog.downcast::<adw::PreferencesDialog>().ok())
+        {
+            dialog.add_toast(toast);
+        } else {
+            self.toast.add_toast(toast);
+        }
     }
 }

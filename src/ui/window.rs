@@ -5,10 +5,7 @@ use gtk::{
         self,
         prelude::{ActionMapExt, FileExt},
     },
-    glib::{
-        self,
-        prelude::{ObjectExt, StaticType},
-    },
+    glib::{self, prelude::StaticType},
     prelude::{BoxExt, ButtonExt, EditableExt, GtkApplicationExt, GtkWindowExt, WidgetExt},
 };
 use std::{
@@ -207,6 +204,12 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
 
     {
         let copy = ui.clone();
+        receive
+            .browse_channel
+            .connect_activated(move |_| copy.browse_channel_transfers());
+    }
+    {
+        let copy = ui.clone();
         ui.receive_file
             .connect_activated(move |_| copy.choose_manifest());
     }
@@ -267,10 +270,10 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
 fn install_actions(ui: &Rc<Ui>) {
     let storage = gio::SimpleAction::new("storage", None);
     {
-        let window = ui.window.downgrade();
+        let weak = Rc::downgrade(ui);
         storage.connect_activate(move |_, _| {
-            if let Some(window) = window.upgrade() {
-                storage::present(&window);
+            if let Some(ui) = weak.upgrade() {
+                storage::present(&ui);
             }
         });
     }

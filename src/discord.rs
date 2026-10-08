@@ -1,6 +1,6 @@
 use crate::{
     attachments::Attachments,
-    parcel::{Cancel, snowflake},
+    parcel::{Cancel, MAX_MANIFEST_SIZE, Manifest, snowflake},
 };
 use anyhow::{Context, Result, ensure};
 use serenity::{
@@ -8,15 +8,34 @@ use serenity::{
         ChannelId, CreateAllowedMentions, CreateAttachment, CreateMessage, GuildChannel, Message,
         MessageId, Nonce,
     },
-    http::{Http, HttpBuilder, HttpError},
+    http::{Http, HttpBuilder, HttpError, MessagePagination},
 };
-use std::{future::Future, time::Duration};
+use std::{collections::HashSet, future::Future, time::Duration};
 use tokio::runtime::Runtime;
 
 pub struct Discord {
     http: Option<Http>,
     attachments: Attachments,
     runtime: Runtime,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChannelTransfer {
+    pub transfer_key: String,
+    pub filename: String,
+    pub size: u64,
+    pub parts: usize,
+    pub encrypted: bool,
+    pub message_link: String,
+    pub message_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TransferPage {
+    pub transfers: Vec<ChannelTransfer>,
+    pub before: Option<String>,
+    pub scanned: usize,
+    pub skipped: usize,
 }
 
 impl Discord {
@@ -64,6 +83,96 @@ impl Discord {
         self.request(cancel, || http.get_channel(channel))?
             .guild()
             .context("Choose a Discord server channel.")
+    }
+
+    pub fn transfers(
+        &self,
+        channel: &str,
+        before: Option<&str>,
+        cancel: &Cancel,
+    ) -> Result<TransferPage> {
+        cancel.check()?;
+        let before = before
+            .map(|id| -> Result<MessageId> {
+                ensure!(snowflake(id), "Invalid Discord message ID.");
+                Ok(MessageId::new(id.parse()?))
+            })
+            .transpose()?;
+        let channel = self.channel(channel, cancel)?;
+        let http = self.http()?;
+        let mut messages = self.request(cancel, || {
+            http.get_messages(channel.id, before.map(MessagePagination::Before), Some(100))
+        })?;
+        cancel.check()?;
+        ensure!(messages.len() <= 100, "Discord returned too many messages.");
+        ensure!(
+            before.is_none_or(|before| messages.iter().all(|message| message.id < before)),
+            "Discord message pagination did not advance to older messages."
+        );
+        messages.sort_unstable_by_key(|message| std::cmp::Reverse(message.id));
+        let mut page = TransferPage {
+            transfers: Vec::new(),
+            before: if messages.len() == 100 {
+                messages.last().map(|message| message.id.to_string())
+            } else {
+                None
+            },
+            scanned: messages.len(),
+            skipped: 0,
+        };
+        let channel_id = channel.id.to_string();
+        let mut seen_transfers = HashSet::new();
+        for message in messages {
+            cancel.check()?;
+            let Some(attachment) = message
+                .attachments
+                .iter()
+                .find(|attachment| attachment.filename.ends_with(".parcel.json"))
+            else {
+                continue;
+            };
+            let manifest = (|| -> Result<Manifest> {
+                ensure!(
+                    u64::from(attachment.size) <= MAX_MANIFEST_SIZE,
+                    "The parcel manifest is too large."
+                );
+                let bytes = self.download(&attachment.url, MAX_MANIFEST_SIZE, cancel)?;
+                let manifest = Manifest::from_bytes(&bytes)?;
+                ensure!(
+                    manifest.channel_id.as_deref() == Some(channel_id.as_str()),
+                    "This manifest points to a different Discord channel."
+                );
+                ensure!(
+                    manifest.parts.iter().all(|part| part.remote.is_some()),
+                    "This manifest has missing remote parts."
+                );
+                Ok(manifest)
+            })();
+            cancel.check()?;
+            match manifest {
+                Ok(manifest) => {
+                    let transfer_key = manifest.cache_key()?;
+                    if !seen_transfers.insert(transfer_key.clone()) {
+                        continue;
+                    }
+                    page.transfers.push(ChannelTransfer {
+                        transfer_key,
+                        filename: manifest.filename,
+                        size: manifest.size,
+                        parts: manifest.parts.len(),
+                        encrypted: manifest.encryption.is_some(),
+                        message_link: format!(
+                            "https://discord.com/channels/{}/{}/{}",
+                            channel.guild_id, channel.id, message.id
+                        ),
+                        message_id: message.id.to_string(),
+                    });
+                }
+                Err(_) => page.skipped += 1,
+            }
+        }
+        cancel.check()?;
+        Ok(page)
     }
 
     pub fn participants(&self, channel: &str, cancel: &Cancel) -> Result<Vec<(String, String)>> {

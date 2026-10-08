@@ -122,6 +122,7 @@ impl SendPage {
 
 pub(super) struct ReceivePage {
     pub(super) page: gtk::Box,
+    pub(super) browse_channel: adw::ActionRow,
     pub(super) receive_file: adw::ActionRow,
     pub(super) receive_link: adw::EntryRow,
     pub(super) decrypt: adw::SwitchRow,
@@ -136,9 +137,15 @@ impl ReceivePage {
         let receive = page();
         receive.append(&heading(
             "Receive a file",
-            "Open a transfer file or paste a Discord message link.",
+            "Browse your channel, open a transfer file, or paste a message link.",
         ));
         let receive_options = adw::PreferencesGroup::new();
+        let browse_channel = adw::ActionRow::builder()
+            .title("Browse channel transfers")
+            .activatable(true)
+            .build();
+        browse_channel.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
+        receive_options.add(&browse_channel);
         let receive_file = adw::ActionRow::builder()
             .title("Open transfer file")
             .activatable(true)
@@ -190,6 +197,7 @@ impl ReceivePage {
         receive.append(&receive_button);
         Self {
             page: receive,
+            browse_channel,
             receive_file,
             receive_link,
             decrypt,
