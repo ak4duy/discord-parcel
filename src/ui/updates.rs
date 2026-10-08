@@ -5,9 +5,10 @@ use gtk::{gio, glib};
 use std::rc::Rc;
 
 impl Ui {
-    pub(super) fn check_updates(self: &Rc<Self>, action: &gio::SimpleAction) {
+    pub(super) fn check_updates(self: &Rc<Self>, action: &gio::SimpleAction, automatic: bool) {
         action.set_enabled(false);
-        self.toast("Checking for updates…");
+        let checking = self.toast("Checking for updates…");
+        checking.set_timeout(0);
 
         let (sender, receiver) = async_channel::bounded(1);
         std::thread::spawn(move || {
@@ -21,7 +22,22 @@ impl Ui {
             let result = receiver.recv().await.unwrap_or_else(|_| {
                 Err("The update check stopped unexpectedly. Try again.".into())
             });
+            checking.dismiss();
             action.set_enabled(true);
+
+            if automatic {
+                let message = match result {
+                    Ok(Some(release)) if release.newer => format!(
+                        "Discord Parcel {} is available. Open Check for Updates for details.",
+                        release.version
+                    ),
+                    Ok(Some(_)) => "You’re up to date".into(),
+                    Ok(None) => "No public stable release is available".into(),
+                    Err(error) => format!("Could not check for updates: {error}"),
+                };
+                ui.toast(&message);
+                return;
+            }
 
             let current = env!("CARGO_PKG_VERSION");
             let (title, detail, url, available) = match result {

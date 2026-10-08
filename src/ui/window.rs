@@ -28,6 +28,7 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
         window.present();
         return;
     }
+    let startup = app.windows().is_empty();
     let css = gtk::CssProvider::new();
     css.load_from_string(include_str!("../../data/style.css"));
     if let Some(display) = gtk::gdk::Display::default() {
@@ -256,7 +257,7 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
             }
         });
     }
-    install_actions(&ui);
+    let check_updates = install_actions(&ui);
     if let Some(path) = initial {
         if path.to_string_lossy().ends_with(".parcel.json") {
             ui.set_manifest(path);
@@ -265,9 +266,12 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
         }
     }
     ui.window.present();
+    if startup {
+        ui.check_updates(&check_updates, true);
+    }
 }
 
-fn install_actions(ui: &Rc<Ui>) {
+fn install_actions(ui: &Rc<Ui>) -> gio::SimpleAction {
     let storage = gio::SimpleAction::new("storage", None);
     {
         let weak = Rc::downgrade(ui);
@@ -282,7 +286,7 @@ fn install_actions(ui: &Rc<Ui>) {
     let check_updates = gio::SimpleAction::new("check-updates", None);
     {
         let copy = ui.clone();
-        check_updates.connect_activate(move |action, _| copy.check_updates(action));
+        check_updates.connect_activate(move |action, _| copy.check_updates(action, false));
     }
     ui.window.add_action(&check_updates);
 
@@ -305,4 +309,5 @@ fn install_actions(ui: &Rc<Ui>) {
         });
     }
     ui.window.add_action(&about);
+    check_updates
 }

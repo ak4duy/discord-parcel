@@ -65,16 +65,17 @@ struct Ui {
 }
 
 impl Ui {
-    fn toast(&self, text: &str) {
+    fn toast(&self, text: &str) -> adw::Toast {
         let toast = adw::Toast::new(text);
         if let Some(dialog) = self
             .window
             .visible_dialog()
             .and_then(|dialog| dialog.downcast::<adw::PreferencesDialog>().ok())
         {
-            dialog.add_toast(toast);
+            dialog.add_toast(toast.clone());
         } else {
-            self.toast.add_toast(toast);
+            self.toast.add_toast(toast.clone());
         }
+        toast
     }
 }

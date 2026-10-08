@@ -108,7 +108,7 @@ impl Ui {
                         {
                             Ok(()) => ui.toast("Transfer file saved"),
                             Err(error) => ui.toast(&format!("Could not save: {error}")),
-                        }
+                        };
                     }
                 }
                 Err(error) => ui.file_dialog_error(error),

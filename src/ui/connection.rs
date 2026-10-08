@@ -64,8 +64,11 @@ impl Ui {
                         Ok(people) => {
                             ui.participants.replace(people);
                         }
-                        Err(_) => ui
-                            .toast("Could not scan people. You can still paste a Discord user ID."),
+                        Err(_) => {
+                            ui.toast(
+                                "Could not scan people. You can still paste a Discord user ID.",
+                            );
+                        }
                     }
                     ui.refresh_suggestions();
                 }
