@@ -173,7 +173,7 @@ make install PREFIX="$HOME/.local"
 | `settings.json` | Bot token, channel ID, and preferred part size.                   |
 | `uploads/`      | Resumable upload checkpoints.                                     |
 | `sent/`         | Completed transfer manifests.                                     |
-| `downloads/`    | In-progress verified download parts.                              |
+| `downloads/`    | Standard cached parts and low-disk resume checkpoints.            |
 | `locks/`        | Advisory locks preventing concurrent writes to the same transfer. |
 
 ## Development

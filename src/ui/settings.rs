@@ -10,10 +10,16 @@ pub(super) struct Settings {
     pub(super) token: String,
     #[serde(default = "default_chunk", alias = "chunk_mib")]
     pub(super) chunk_mb: u32,
+    #[serde(default = "default_low_disk")]
+    pub(super) low_disk: bool,
 }
 
 fn default_chunk() -> u32 {
     20
+}
+
+fn default_low_disk() -> bool {
+    true
 }
 
 impl Settings {
@@ -25,6 +31,7 @@ impl Settings {
                 channel_id: String::new(),
                 token: String::new(),
                 chunk_mb: default_chunk(),
+                low_disk: default_low_disk(),
             })
     }
 }
@@ -35,6 +42,7 @@ impl Ui {
             channel_id: self.connection.borrow().channel_id.clone(),
             token: self.connection.borrow().token.clone(),
             chunk_mb: self.chunk_size.value_as_int() as u32,
+            low_disk: self.low_disk.is_active(),
         };
         let result = serde_json::to_vec_pretty(&settings)
             .map_err(anyhow::Error::from)

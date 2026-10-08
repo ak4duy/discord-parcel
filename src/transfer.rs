@@ -550,6 +550,19 @@ async fn manifest_from_link_async(link: &str, token: &str, cancel: &Cancel) -> R
     Ok(manifest)
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReceiveMode {
+    #[default]
+    Standard,
+    LowDisk,
+}
+
+#[derive(Default)]
+pub struct ReceiveOptions<'a> {
+    pub password: Option<&'a str>,
+    pub mode: ReceiveMode,
+}
+
 pub fn download(
     manifest: &Manifest,
     password: Option<&str>,
@@ -559,9 +572,32 @@ pub fn download(
     cancel: &Cancel,
     progress: &dyn Fn(Progress),
 ) -> Result<PathBuf> {
+    download_with_options(
+        manifest,
+        &ReceiveOptions {
+            password,
+            mode: ReceiveMode::Standard,
+        },
+        destination,
+        token,
+        storage,
+        cancel,
+        progress,
+    )
+}
+
+pub fn download_with_options(
+    manifest: &Manifest,
+    options: &ReceiveOptions<'_>,
+    destination: &Path,
+    token: &str,
+    storage: &Path,
+    cancel: &Cancel,
+    progress: &dyn Fn(Progress),
+) -> Result<PathBuf> {
     runtime()?.block_on(download_async(
         manifest,
-        password,
+        options,
         destination,
         token,
         storage,
@@ -572,7 +608,7 @@ pub fn download(
 
 async fn download_async(
     manifest: &Manifest,
-    password: Option<&str>,
+    options: &ReceiveOptions<'_>,
     destination: &Path,
     token: &str,
     storage: &Path,
@@ -583,7 +619,7 @@ async fn download_async(
     let encryption_key = manifest
         .encryption
         .as_ref()
-        .map(|metadata| metadata.unlock(password.unwrap_or_default()))
+        .map(|metadata| metadata.unlock(options.password.unwrap_or_default()))
         .transpose()?;
 
     ensure!(
@@ -592,9 +628,10 @@ async fn download_async(
     );
 
     ensure!(
-        !destination
-            .join(parcel::output_filename(&manifest.filename,),)
-            .exists(),
+        options.mode == ReceiveMode::LowDisk
+            || !destination
+                .join(parcel::output_filename(&manifest.filename,),)
+                .exists(),
         "{} already exists in the destination folder.",
         parcel::output_filename(&manifest.filename)
     );
@@ -610,15 +647,32 @@ async fn download_async(
 
     let cache = storage.join("downloads").join(key);
 
-    fs::create_dir_all(&cache)?;
-    let cached = crate::disk_space::check_download(
-        manifest,
-        encryption_key.as_ref(),
-        &cache,
-        destination,
-        cancel,
-        progress,
-    )?;
+    let mut partial = if options.mode == ReceiveMode::LowDisk {
+        Some(crate::low_disk::PartialOutput::open(
+            manifest,
+            destination,
+            storage,
+            cancel,
+            progress,
+        )?)
+    } else {
+        None
+    };
+    let cached = if let Some(partial) = &partial {
+        (0..manifest.parts.len())
+            .map(|index| index < partial.completed())
+            .collect()
+    } else {
+        fs::create_dir_all(&cache)?;
+        crate::disk_space::check_download(
+            manifest,
+            encryption_key.as_ref(),
+            &cache,
+            destination,
+            cancel,
+            progress,
+        )?
+    };
 
     let channel_id = manifest
         .channel_id
@@ -698,7 +752,12 @@ async fn download_async(
             };
             parcel::verify_part(&plaintext, part)?;
 
-            parcel::atomic_write(&parcel::part_path(&cache, part.index), &bytes)?;
+            if let Some(partial) = &mut partial {
+                cancel.check()?;
+                partial.append(&plaintext, part)?;
+            } else {
+                parcel::atomic_write(&parcel::part_path(&cache, part.index), &bytes)?;
+            }
         }
 
         done += part.size;
@@ -715,6 +774,9 @@ async fn download_async(
     }
 
     cancel.check()?;
+    if let Some(partial) = partial {
+        return partial.publish(manifest, cancel, progress);
+    }
     crate::disk_space::check_output(destination, manifest.size)?;
     let output = parcel::assemble(
         manifest,

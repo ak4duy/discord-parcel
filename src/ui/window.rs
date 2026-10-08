@@ -75,6 +75,7 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
     let send = SendPage::new(settings.chunk_mb);
     stack.add_titled_with_icon(&send.page, Some("send"), "Send", "document-send-symbolic");
     let receive = ReceivePage::new();
+    receive.low_disk.set_active(settings.low_disk);
     stack.add_titled_with_icon(
         &receive.page,
         Some("receive"),
@@ -125,6 +126,7 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
         encrypt: send.encrypt,
         send_password: send.send_password,
         decrypt: receive.decrypt,
+        low_disk: receive.low_disk,
         receive_password: receive.receive_password,
         source_title: send.source_title,
         source_detail: send.source_detail,
@@ -227,6 +229,14 @@ pub fn present(app: &adw::Application, initial: Option<PathBuf>) {
         let copy = ui.clone();
         ui.destination_row
             .connect_activated(move |_| copy.choose_destination());
+    }
+    {
+        let weak = Rc::downgrade(&ui);
+        ui.low_disk.connect_active_notify(move |_| {
+            if let Some(ui) = weak.upgrade() {
+                ui.save_settings();
+            }
+        });
     }
     {
         let copy = ui.clone();

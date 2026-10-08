@@ -155,10 +155,18 @@ impl Ui {
         token: String,
         password: Option<String>,
     ) {
+        let mode = if self.low_disk.is_active() {
+            if manifest.encryption.is_some() {
+                self.toast("Low-disk mode leaves decrypted partial content on disk, even after cancellation.");
+            }
+            transfer::ReceiveMode::LowDisk
+        } else {
+            transfer::ReceiveMode::Standard
+        };
         self.run_job(move |cancel, progress| {
-            let output = transfer::download(
+            let output = transfer::download_with_options(
                 &manifest,
-                password.as_deref(),
+                &transfer::ReceiveOptions { password: password.as_deref(), mode },
                 &destination,
                 &token,
                 &parcel::data_dir(),

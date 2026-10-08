@@ -44,6 +44,7 @@ struct Ui {
     encrypt: adw::SwitchRow,
     send_password: adw::PasswordEntryRow,
     decrypt: adw::SwitchRow,
+    low_disk: adw::SwitchRow,
     receive_password: adw::PasswordEntryRow,
     source_title: gtk::Label,
     source_detail: gtk::Label,

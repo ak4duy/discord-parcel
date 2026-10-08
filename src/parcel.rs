@@ -469,7 +469,7 @@ pub fn initialize_data_dir() -> Result<()> {
         })?;
     }
 
-    Ok(())
+    crate::low_disk::migrate_checkpoints(&location.path)
 }
 
 pub fn output_filename(filename: &str) -> String {

@@ -52,7 +52,7 @@ pub(super) fn present(ui: &Rc<Ui>) {
 
     let usage = adw::PreferencesGroup::builder()
         .title("Managed data")
-        .description("File sizes only, excluding the app, runtime libraries, and restored files.")
+        .description("File sizes only, excluding the app, runtime libraries, restored files,..")
         .build();
     let refresh = gtk::Button::builder()
         .icon_name("view-refresh-symbolic")
@@ -61,7 +61,7 @@ pub(super) fn present(ui: &Rc<Ui>) {
         .build();
     usage.set_header_suffix(Some(&refresh));
     let rows = [
-        "Download cache",
+        "Downloads",
         "Upload checkpoints",
         "Saved transfer files",
         "Settings",
@@ -79,8 +79,8 @@ pub(super) fn present(ui: &Rc<Ui>) {
     page.add(&usage);
 
     let cleanup = adw::PreferencesGroup::builder()
-        .title("Download cache cleanup")
-        .description("Clear cached parts from stopped or interrupted downloads.")
+        .title("Download cleanup")
+        .description("Clear stopped downloads, including Standard cached parts and Low-disk partial files in your destination folders.")
         .build();
     let clear = gtk::Button::builder()
         .label("Clear Inactive Downloads…")
@@ -157,8 +157,8 @@ impl StorageView {
         };
         self.set_busy(true);
         let confirmation = adw::AlertDialog::builder()
-            .heading("Clear inactive download caches?")
-            .body("This removes cached parts from downloads that are not currently running, including paused or interrupted downloads. Resuming them will require downloading those parts again.\n\nYour settings, upload checkpoints, saved transfer files, restored files, and Discord messages will not be deleted. Active caches and unrecognized files are skipped.")
+            .heading("Clear inactive downloads?")
+            .body("This deletes cached parts and resume data for stopped or interrupted downloads in both modes.")
             .build();
         confirmation.add_response("cancel", "Cancel");
         confirmation.add_response("clear", "Clear Inactive Downloads");
@@ -184,7 +184,7 @@ impl StorageView {
         };
         self.set_busy(true);
         ui.toast(if clear {
-            "Clearing inactive download caches…"
+            "Clearing inactive downloads…"
         } else {
             "Calculating storage usage…"
         });
@@ -211,14 +211,14 @@ impl StorageView {
                     if let Some(cleanup) = cleanup {
                         ui.toast(&match cleanup {
                             Ok(report) => format!(
-                                "Removed {} from {} download cache(s). Skipped {} active, empty, or unrecognized entry/entries. Failed to clear {} entry/entries.",
+                                "Removed {} from {} download entries. Skipped {} active, empty, or unrecognized entries. Failed to clear {} entries.",
                                 parcel::human_size(report.removed_bytes),
                                 report.removed_caches,
                                 report.skipped_caches,
                                 report.failed_caches,
                             ),
                             Err(error) => format!(
-                                "Cleanup could not finish: {error}. Some caches may already have been cleared."
+                                "Cleanup could not finish: {error}. Some files may already have been deleted."
                             ),
                         });
                     }

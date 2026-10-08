@@ -126,6 +126,7 @@ pub(super) struct ReceivePage {
     pub(super) receive_file: adw::ActionRow,
     pub(super) receive_link: adw::EntryRow,
     pub(super) decrypt: adw::SwitchRow,
+    pub(super) low_disk: adw::SwitchRow,
     pub(super) receive_password: adw::PasswordEntryRow,
     pub(super) destination: PathBuf,
     pub(super) destination_row: adw::ActionRow,
@@ -167,6 +168,12 @@ impl ReceivePage {
             .title("Decryption passphrase")
             .sensitive(false)
             .build();
+        let low_disk = adw::SwitchRow::builder()
+            .title("Low-disk mode")
+            .subtitle("Uses roughly 1x file space")
+            .active(false)
+            .build();
+        optional_receive.add(&low_disk);
         optional_receive.add(&decrypt);
         optional_receive.add(&receive_password);
         decrypt
@@ -201,6 +208,7 @@ impl ReceivePage {
             receive_file,
             receive_link,
             decrypt,
+            low_disk,
             receive_password,
             destination,
             destination_row,

@@ -1,7 +1,7 @@
 use crate::parcel;
 use anyhow::{Context, Result, ensure};
 use std::{
-    fs::{self, Metadata, TryLockError},
+    fs::{self, File, Metadata, TryLockError},
     io,
     path::Path,
 };
@@ -50,11 +50,17 @@ pub fn clear_inactive_downloads(root: &Path) -> Result<CleanupReport> {
     {
         let entry = entry.with_context(|| format!("Could not list {}", downloads.display()))?;
         let name = entry.file_name();
-        let Some(key) = name.to_str().filter(|name| cache_key(name)) else {
-            report.skipped_caches += 1;
-            continue;
+        let result = match name.to_str() {
+            Some(key) if cache_key(key) => clear_cache(root, key, &mut report.removed_bytes),
+            Some(name) if name.strip_suffix(".json").is_some_and(cache_key) => {
+                let key = name
+                    .strip_suffix(".json")
+                    .expect("checkpoint suffix checked");
+                clear_checkpoint(root, key, &mut report.removed_bytes)
+            }
+            _ => Ok(false),
         };
-        match clear_cache(root, key, &mut report.removed_bytes) {
+        match result {
             Ok(true) => report.removed_caches += 1,
             Ok(false) => report.skipped_caches += 1,
             Err(_) => report.failed_caches += 1,
@@ -73,30 +79,8 @@ fn clear_cache(root: &Path, key: &str, removed_bytes: &mut u64) -> Result<bool> 
     if is_link(&metadata) || !metadata.is_dir() {
         return Ok(false);
     }
-    let lock_path = root.join("locks").join(format!("download-{key}"));
-    if let Some(metadata) = optional_metadata(&lock_path)? {
-        if is_link(&metadata) {
-            return Ok(false);
-        }
-        ensure!(
-            metadata.is_file(),
-            "Expected a regular lock file: {}",
-            lock_path.display()
-        );
-    }
-    let _lock = match parcel::lock_transfer(&lock_path) {
-        Ok(lock) => lock,
-        Err(error)
-            if matches!(
-                error.downcast_ref::<TryLockError>(),
-                Some(TryLockError::WouldBlock)
-            ) =>
-        {
-            return Ok(false);
-        }
-        Err(error) => {
-            return Err(error).with_context(|| format!("Could not lock {}", lock_path.display()));
-        }
+    let Some(_lock) = try_download_lock(root, key)? else {
+        return Ok(false);
     };
 
     ensure!(
@@ -149,6 +133,43 @@ fn clear_cache(root: &Path, key: &str, removed_bytes: &mut u64) -> Result<bool> 
     fs::remove_dir(&cache)
         .with_context(|| format!("Could not remove empty cache {}", cache.display()))?;
     Ok(true)
+}
+
+pub(crate) fn try_download_lock(root: &Path, key: &str) -> Result<Option<File>> {
+    ensure!(cache_key(key), "Invalid transfer identity.");
+    ensure!(check_root(root)?, "Storage directory disappeared.");
+    plain_directory(&root.join("locks"))?;
+    let lock_path = root.join("locks").join(format!("download-{key}"));
+    if let Some(metadata) = optional_metadata(&lock_path)?
+        && (is_link(&metadata) || !metadata.is_file())
+    {
+        return Ok(None);
+    }
+    match parcel::lock_transfer(&lock_path) {
+        Ok(lock) => Ok(Some(lock)),
+        Err(error)
+            if matches!(
+                error.downcast_ref::<TryLockError>(),
+                Some(TryLockError::WouldBlock)
+            ) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error).with_context(|| format!("Could not lock {}", lock_path.display())),
+    }
+}
+
+fn clear_checkpoint(root: &Path, key: &str, removed_bytes: &mut u64) -> Result<bool> {
+    ensure!(
+        check_cleanup_roots(root)?,
+        "Download directory disappeared."
+    );
+    let path = root.join("downloads").join(format!("{key}.json"));
+    let metadata = inspect(&path)?;
+    if is_link(&metadata) || !metadata.is_file() {
+        return Ok(false);
+    }
+    crate::low_disk::clear_checkpoint(root, key, removed_bytes)
 }
 
 fn cache_key(name: &str) -> bool {
@@ -209,7 +230,7 @@ fn plain_directory(path: &Path) -> Result<bool> {
     Ok(true)
 }
 
-fn check_root(root: &Path) -> Result<bool> {
+pub(crate) fn check_root(root: &Path) -> Result<bool> {
     let ancestors: Vec<_> = root
         .ancestors()
         .filter(|path| !path.as_os_str().is_empty())

@@ -92,6 +92,89 @@ pub(crate) fn check_output(destination: &Path, size: u64) -> Result<()> {
     )
 }
 
+pub(crate) fn check_low_disk(
+    destination: &Path,
+    checkpoints: &Path,
+    partial: &std::fs::File,
+    size: u64,
+    verified: u64,
+    checkpoint_size: u64,
+) -> Result<()> {
+    let output = query(destination)?;
+    let metadata = query(checkpoints)?;
+    let credited =
+        partial_allocation(partial)?.min(allocated_bytes(verified, output.allocation_unit)?);
+    let remaining = allocated_bytes(size, output.allocation_unit)?.saturating_sub(credited);
+    let checkpoint_required = allocated_bytes(checkpoint_size, metadata.allocation_unit)?
+        .checked_mul(2)
+        .and_then(|bytes| bytes.checked_add(metadata.allocation_unit))
+        .context("Required checkpoint space exceeds u64.")?;
+    let output_required = remaining
+        .checked_add(output.allocation_unit)
+        .context("Required output space exceeds u64.")?;
+    if matches!((&output.volume, &metadata.volume), (Some(a), Some(b)) if a != b) {
+        require_space(
+            destination,
+            output_required,
+            output.available,
+            "remaining Low-disk output and publication metadata",
+        )?;
+        require_space(
+            checkpoints,
+            checkpoint_required,
+            metadata.available,
+            "Low-disk checkpoints",
+        )?;
+    } else {
+        require_space(
+            destination,
+            output_required
+                .checked_add(checkpoint_required)
+                .context("Required Low-disk space exceeds u64.")?,
+            output.available.min(metadata.available),
+            "remaining Low-disk output and checkpoints (verified allocated partial data already counted)",
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn partial_allocation(file: &std::fs::File) -> Result<u64> {
+    use std::os::unix::fs::MetadataExt;
+    file.metadata()?
+        .blocks()
+        .checked_mul(512)
+        .context("Partial allocation exceeds u64.")
+}
+
+#[cfg(windows)]
+fn partial_allocation(file: &std::fs::File) -> Result<u64> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_STANDARD_INFO, FileStandardInfo, GetFileInformationByHandleEx,
+    };
+    let mut info = std::mem::MaybeUninit::<FILE_STANDARD_INFO>::uninit();
+    ensure!(
+        unsafe {
+            GetFileInformationByHandleEx(
+                file.as_raw_handle(),
+                FileStandardInfo,
+                info.as_mut_ptr().cast(),
+                std::mem::size_of::<FILE_STANDARD_INFO>() as u32,
+            )
+        } != 0,
+        "Could not query partial output allocation: {}",
+        std::io::Error::last_os_error()
+    );
+    u64::try_from(unsafe { info.assume_init() }.AllocationSize)
+        .context("Invalid partial allocation.")
+}
+
+#[cfg(not(any(unix, windows)))]
+fn partial_allocation(_file: &std::fs::File) -> Result<u64> {
+    Ok(0)
+}
+
 fn allocated_bytes(size: u64, allocation_unit: u64) -> Result<u64> {
     size.div_ceil(allocation_unit)
         .checked_mul(allocation_unit)
