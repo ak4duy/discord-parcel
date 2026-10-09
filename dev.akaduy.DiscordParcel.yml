@@ -1,0 +1,33 @@
+app-id: dev.akaduy.DiscordParcel
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+command: discord-parcel
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=xdg-download
+modules:
+  - name: discord-parcel
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/discord-parcel/cargo
+        CARGO_TARGET_DIR: /run/build/discord-parcel/target
+        CARGO_NET_OFFLINE: "true"
+    build-commands:
+      - cargo build --release --frozen
+      - make install PREFIX=/app
+      - install -Dm644 LICENSE /app/share/licenses/dev.akaduy.DiscordParcel/LICENSE
+    sources:
+      - type: git
+        url: https://github.com/ak4duy/discord-parcel.git
+        tag: v0.2.0
+        commit: c6204e5ba5d6c98bd20813411e412d49d779671e
+      - cargo-sources.json

@@ -5,3 +5,6 @@ __pycache__/
 /.win
 *.parcel.json
 *.part
+/.flatpak-builder/
+/.flatpak-build/
+/.flatpak-repo/

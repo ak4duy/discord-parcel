@@ -12,10 +12,12 @@ install:
 	install -Dm644 data/dev.akaduy.DiscordParcel.desktop "$(DESTDIR)$(PREFIX)/share/applications/dev.akaduy.DiscordParcel.desktop"
 	install -Dm644 data/dev.akaduy.DiscordParcel.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/dev.akaduy.DiscordParcel.svg"
 	install -Dm644 data/dev.akaduy.DiscordParcel.xml "$(DESTDIR)$(PREFIX)/share/mime/packages/dev.akaduy.DiscordParcel.xml"
+	install -Dm644 data/dev.akaduy.DiscordParcel.metainfo.xml "$(DESTDIR)$(PREFIX)/share/metainfo/dev.akaduy.DiscordParcel.metainfo.xml"
 	update-mime-database "$(DESTDIR)$(PREFIX)/share/mime"
 	-update-desktop-database "$(DESTDIR)$(PREFIX)/share/applications"
 	-gtk-update-icon-cache -f -t "$(DESTDIR)$(PREFIX)/share/icons/hicolor"
 
 uninstall:
+	rm -f "$(DESTDIR)$(PREFIX)/share/metainfo/dev.akaduy.DiscordParcel.metainfo.xml"
 	rm -f "$(DESTDIR)$(PREFIX)/bin/discord-parcel" "$(DESTDIR)$(PREFIX)/share/applications/dev.akaduy.DiscordParcel.desktop" "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/dev.akaduy.DiscordParcel.svg" "$(DESTDIR)$(PREFIX)/share/mime/packages/dev.akaduy.DiscordParcel.xml"
 	update-mime-database "$(DESTDIR)$(PREFIX)/share/mime"

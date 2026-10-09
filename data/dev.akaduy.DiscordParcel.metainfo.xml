@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Aka Duy -->
+<component type="desktop-application">
+  <id>dev.akaduy.DiscordParcel</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Discord Parcel</name>
+  <summary>Send and restore files via Discord</summary>
+  <developer id="dev.akaduy">
+    <name>Aka Duy</name>
+  </developer>
+  <description>
+    <p>
+      Discord Parcel splits files into numbered parts and uploads them to a
+      Discord channel using your bot. Share a transfer file or message link
+      so the recipient can download the parts and restore the original file.
+    </p>
+    <ul>
+      <li>Transfer files without transcoding or changing their contents</li>
+      <li>Resume interrupted uploads and downloads</li>
+      <li>Verify restored files with SHA-256 checksums</li>
+      <li>Protect file contents with optional passphrase encryption</li>
+    </ul>
+    <p>
+      Discord Parcel is an independent project, not affiliated with or
+      endorsed by Discord.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.akaduy.DiscordParcel.desktop</launchable>
+  <url type="homepage">https://github.com/ak4duy/discord-parcel</url>
+  <url type="bugtracker">https://github.com/ak4duy/discord-parcel/issues</url>
+  <url type="vcs-browser">https://github.com/ak4duy/discord-parcel</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Split and send files to a Discord channel</caption>
+      <image>https://raw.githubusercontent.com/ak4duy/discord-parcel/v0.2.0/data/gallery/pic1.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Download and restore a shared file</caption>
+      <image>https://raw.githubusercontent.com/ak4duy/discord-parcel/v0.2.0/data/gallery/pic2.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <requires>
+    <internet>always</internet>
+  </requires>
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+  <releases>
+    <release version="0.2.0" date="2026-10-09">
+      <url>https://github.com/ak4duy/discord-parcel/releases/tag/v0.2.0</url>
+    </release>
+  </releases>
+</component>
