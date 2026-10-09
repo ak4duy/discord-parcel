@@ -183,11 +183,12 @@ impl StorageView {
             return;
         };
         self.set_busy(true);
-        ui.toast(if clear {
+        let loading = ui.toast(if clear {
             "Clearing inactive downloads…"
         } else {
             "Calculating storage usage…"
         });
+        loading.set_timeout(0);
         let root = self.root.clone();
         let (sender, receiver) = async_channel::bounded(1);
         std::thread::spawn(move || {
@@ -200,6 +201,7 @@ impl StorageView {
         let view = self.clone();
         glib::spawn_future_local(async move {
             let result = receiver.recv().await;
+            loading.dismiss();
             if view.closed.get() {
                 return;
             }
