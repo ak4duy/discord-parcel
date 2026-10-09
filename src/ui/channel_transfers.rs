@@ -29,6 +29,7 @@ struct ChannelBrowser {
     busy: Cell<bool>,
     closed: Cell<bool>,
     cancel: RefCell<Cancel>,
+    loading: RefCell<Option<adw::Toast>>,
 }
 
 impl Ui {
@@ -92,6 +93,7 @@ impl Ui {
             busy: Cell::new(false),
             closed: Cell::new(false),
             cancel: RefCell::new(Cancel::default()),
+            loading: RefCell::new(None),
         });
         {
             let weak = Rc::downgrade(&browser);
@@ -115,8 +117,8 @@ impl Ui {
                 if let Some(browser) = weak.upgrade() {
                     browser.cancel.borrow().cancel();
                     browser.stop.set_sensitive(false);
-                    if let Some(ui) = browser.ui.upgrade() {
-                        ui.toast(
+                    if let Some(loading) = browser.loading.borrow().as_ref() {
+                        loading.set_title(
                             "Stopping… An ongoing manifest download may need to finish first.",
                         );
                     }
@@ -127,6 +129,9 @@ impl Ui {
         dialog.connect_closed(move |_| {
             closing_browser.closed.set(true);
             closing_browser.cancel.borrow().cancel();
+            if let Some(loading) = closing_browser.loading.borrow_mut().take() {
+                loading.dismiss();
+            }
         });
         dialog.present(Some(&self.window));
         browser.load(true);
@@ -175,7 +180,9 @@ impl ChannelBrowser {
             Some(before)
         };
         self.set_busy(true);
-        ui.toast("Scanning channel messages and reading transfer manifests…");
+        let loading = ui.toast("Scanning channel messages and reading transfer manifests…");
+        loading.set_timeout(0);
+        self.loading.replace(Some(loading));
         let cancel = Cancel::default();
         self.cancel.replace(cancel.clone());
         let connection = self.connection.clone();
@@ -193,6 +200,9 @@ impl ChannelBrowser {
             let result = receiver.recv().await.unwrap_or_else(|_| {
                 Err("The channel scan stopped unexpectedly. Try again.".into())
             });
+            if let Some(loading) = browser.loading.borrow_mut().take() {
+                loading.dismiss();
+            }
             if browser.closed.get() {
                 return;
             }
