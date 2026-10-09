@@ -26,6 +26,16 @@ impl Attachments {
         })
     }
     pub(crate) fn download(&self, url: &str, limit: u64, cancel: &Cancel) -> Result<Vec<u8>> {
+        self.download_with_progress(url, limit, cancel, &|_| {})
+    }
+
+    pub(crate) fn download_with_progress(
+        &self,
+        url: &str,
+        limit: u64,
+        cancel: &Cancel,
+        progress: &dyn Fn(u64),
+    ) -> Result<Vec<u8>> {
         validate_attachment_url(url)?;
         for attempt in 0..4 {
             cancel.check()?;
@@ -56,13 +66,18 @@ impl Attachments {
                 "Attachment unavailable (HTTP {}). Its link may have expired. Connect a bot with access to the source channel to refresh it.",
                 response.status().as_u16()
             );
-            return read_response(response, limit, cancel);
+            return read_response(response, limit, cancel, progress);
         }
         bail!("Discord's attachment server is busy. Try again later.")
     }
 }
 
-fn read_response(mut response: Response, limit: u64, cancel: &Cancel) -> Result<Vec<u8>> {
+fn read_response(
+    mut response: Response,
+    limit: u64,
+    cancel: &Cancel,
+    progress: &dyn Fn(u64),
+) -> Result<Vec<u8>> {
     ensure!(
         response.content_length().is_none_or(|size| size <= limit),
         "Discord response exceeds the expected size."
@@ -82,6 +97,7 @@ fn read_response(mut response: Response, limit: u64, cancel: &Cancel) -> Result<
             "Discord response exceeds the expected size."
         );
         result.extend_from_slice(&buffer[..count]);
+        progress(result.len() as u64);
     }
     Ok(result)
 }

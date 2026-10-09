@@ -54,11 +54,22 @@ impl Ui {
                         if p.total > 0 {
                             ui.progress_bar
                                 .set_fraction((p.done as f64 / p.total as f64).clamp(0.0, 1.0));
-                            ui.progress_detail.set_label(&format!(
+                            let mut detail = format!(
                                 "{} of {}",
                                 parcel::human_size(p.done),
                                 parcel::human_size(p.total)
-                            ));
+                            );
+                            if let Some(speed) = p.bytes_per_second {
+                                let (value, unit) = if speed >= 1_000_000_000.0 {
+                                    (speed / 1_000_000_000.0, "GB/s")
+                                } else if speed >= 1_000_000.0 {
+                                    (speed / 1_000_000.0, "MB/s")
+                                } else {
+                                    (speed / 1_000.0, "KB/s")
+                                };
+                                detail.push_str(&format!(" — {value:.1} {unit}"));
+                            }
+                            ui.progress_detail.set_label(&detail);
                         } else {
                             ui.progress_bar.pulse();
                             ui.progress_detail.set_label("Please wait…");

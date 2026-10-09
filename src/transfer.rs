@@ -14,6 +14,11 @@ use std::{
     fs::{self, File},
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 #[derive(Clone)]
@@ -708,7 +713,27 @@ async fn download_async(
         if !cached {
             let remote = part.remote.as_ref().unwrap();
 
-            let bytes = match download_discord_url(&remote.url, wire_size, cancel).await {
+            let report = |received: u64, speed: f64| {
+                let mut update = Progress::new(
+                    format!(
+                        "Downloading part {} of {}",
+                        part.index + 1,
+                        manifest.parts.len()
+                    ),
+                    done + received.min(part.size),
+                    manifest.size,
+                );
+                update.bytes_per_second = Some(speed);
+                progress(update);
+            };
+            let bytes = match download_discord_url_with_progress(
+                &remote.url,
+                wire_size,
+                cancel,
+                &report,
+            )
+            .await
+            {
                 Ok(bytes) => bytes,
 
                 Err(error) if !has_token => {
@@ -741,7 +766,8 @@ async fn download_async(
                                 "A parcel part is missing or inaccessible. Check channel permissions and Message Content Intent if another bot sent it.",
                             )?;
 
-                    download_attachment(attachment, wire_size, cancel).await?
+                    download_discord_url_with_progress(&attachment.url, wire_size, cancel, &report)
+                        .await?
                 }
             };
 
@@ -830,6 +856,46 @@ async fn download_discord_url(url: &str, max_size: u64, cancel: &Cancel) -> Resu
     })
     .await
     .context("Attachment download worker stopped.")?
+}
+
+async fn download_discord_url_with_progress(
+    url: &str,
+    max_size: u64,
+    cancel: &Cancel,
+    progress: &dyn Fn(u64, f64),
+) -> Result<Vec<u8>> {
+    parcel::validate_attachment_url(url)?;
+    let url = url.to_owned();
+    let cancel = cancel.clone();
+    let received = Arc::new(AtomicU64::new(0));
+    let counter = received.clone();
+    let mut worker = tokio::task::spawn_blocking(move || {
+        crate::attachments::Attachments::new()?.download_with_progress(
+            &url,
+            max_size,
+            &cancel,
+            &|bytes| counter.store(bytes, Ordering::Relaxed),
+        )
+    });
+    let mut interval = tokio::time::interval(Duration::from_millis(250));
+    let mut last_time = Instant::now();
+    let mut last_bytes = 0;
+    loop {
+        let result = tokio::select! {
+            result = &mut worker => Some(result),
+            _ = interval.tick() => None,
+        };
+        let now = Instant::now();
+        let bytes = received.load(Ordering::Relaxed);
+        let elapsed = now.duration_since(last_time).as_secs_f64();
+        let speed = bytes.saturating_sub(last_bytes) as f64 / elapsed.max(f64::EPSILON);
+        progress(bytes, speed);
+        last_time = now;
+        last_bytes = bytes;
+        if let Some(result) = result {
+            return result.context("Attachment download worker stopped.")?;
+        }
+    }
 }
 
 fn parse_channel_id(value: &str) -> Result<ChannelId> {

@@ -40,6 +40,7 @@ pub struct Progress {
     pub stage: String,
     pub done: u64,
     pub total: u64,
+    pub bytes_per_second: Option<f64>,
 }
 
 impl Progress {
@@ -48,6 +49,7 @@ impl Progress {
             stage: stage.into(),
             done,
             total,
+            bytes_per_second: None,
         }
     }
 }
