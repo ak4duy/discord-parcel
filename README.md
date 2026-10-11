@@ -45,7 +45,7 @@ Optional passphrase encryption protects file contents before they leave your dev
 | :------------- | :------------------------------------------------------------------------------------------- |
 | **1. Send**    | Choose a file, optionally enable encryption, and upload its parts with your Discord bot.     |
 | **2. Share**   | Save the transfer file or copy the message link. Share any encryption passphrase separately. |
-| **3. Restore** | Open the transfer in Receive, choose a destination, and select **Download and Restore**.     |
+| **3. Restore** | Open the transfer in Receive, choose a destination, select **Preview Download**, then **Download and Restore**. |
 
 > To resume an upload, choose the same file, channel, bot, and part size again.
 > Encrypted uploads also need the same passphrase.
