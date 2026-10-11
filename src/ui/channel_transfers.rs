@@ -300,7 +300,7 @@ impl ChannelBrowser {
             if let Some(dialog) = browser.dialog.upgrade() {
                 dialog.close();
             }
-            ui.toast("Transfer selected. Choose a destination, then Download and Restore.");
+            ui.toast("Transfer selected. Choose a destination, then Preview Download.");
         });
         self.transfers.add(&row);
         self.rows.borrow_mut().push(row);

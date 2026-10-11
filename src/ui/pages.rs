@@ -149,6 +149,7 @@ impl ReceivePage {
         receive_options.add(&browse_channel);
         let receive_file = adw::ActionRow::builder()
             .title("Open transfer file")
+            .use_markup(false)
             .activatable(true)
             .build();
         receive_file.add_suffix(&gtk::Image::from_icon_name("document-open-symbolic"));
@@ -197,7 +198,7 @@ impl ReceivePage {
         receive.append(&destination_group);
         receive.append(&optional_receive);
 
-        let receive_button = gtk::Button::with_label("Download and Restore");
+        let receive_button = gtk::Button::with_label("Preview Download");
         receive_button.add_css_class("suggested-action");
         receive_button.add_css_class("pill");
         receive_button.set_halign(gtk::Align::Center);

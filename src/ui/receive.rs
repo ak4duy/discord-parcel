@@ -10,13 +10,36 @@ use std::{path::PathBuf, rc::Rc};
 impl Ui {
     pub(super) fn set_manifest(&self, path: PathBuf) {
         self.receive_link.set_text("");
-        self.receive_file
-            .set_subtitle(&path.file_name().unwrap_or_default().to_string_lossy());
-        if let Ok(manifest) = Manifest::read(&path) {
-            self.decrypt.set_active(manifest.encryption.is_some());
-        }
-        self.parcel_file.replace(Some(path));
+        self.parcel_file.replace(None);
+        self.receive_password.set_text("");
         self.stack.set_visible_child_name("receive");
+        let result = Manifest::read(&path).and_then(|manifest| {
+            validate_receive_manifest(&manifest)?;
+            Ok(manifest)
+        });
+        match result {
+            Ok(manifest) => {
+                self.receive_file.set_subtitle(&format!(
+                    "{}  {}  {} parts",
+                    manifest.filename,
+                    parcel::human_size(manifest.size),
+                    manifest.parts.len(),
+                ));
+                self.decrypt.set_active(manifest.encryption.is_some());
+                self.parcel_file.replace(Some(path));
+            }
+            Err(error) => {
+                self.receive_file.set_subtitle("Choose a .parcel.json file");
+                self.decrypt.set_active(false);
+                let dialog = adw::AlertDialog::builder()
+                    .heading("Could not open transfer file")
+                    .body(format!("{error:#}"))
+                    .build();
+                dialog.add_response("close", "Close");
+                dialog.set_close_response("close");
+                dialog.present(Some(&self.window));
+            }
+        }
     }
 
     pub(super) fn choose_manifest(self: &Rc<Self>) {
@@ -74,10 +97,11 @@ impl Ui {
         }
         let destination = self.destination.borrow().clone();
         let token = self.connection.borrow().token.clone();
-        let password = self
-            .decrypt
-            .is_active()
-            .then(|| self.receive_password.text().to_string());
+        let mode = if self.low_disk.is_active() {
+            transfer::ReceiveMode::LowDisk
+        } else {
+            transfer::ReceiveMode::Standard
+        };
         let lookup_token = token.clone();
         self.run_job_with_completion(
             move |cancel, progress| {
@@ -87,61 +111,126 @@ impl Ui {
                 } else {
                     transfer::manifest_from_link(&link, &lookup_token, cancel)?
                 };
+                validate_receive_manifest(&manifest)?;
                 cancel.check()?;
                 Ok(manifest)
             },
             move |ui, manifest| {
                 ui.decrypt.set_active(manifest.encryption.is_some());
-                if manifest.encryption.is_some() && password.as_ref().is_none_or(String::is_empty) {
-                    ui.prompt_passphrase(manifest, destination, token);
-                } else {
-                    ui.download_manifest(manifest, destination, token, password);
-                }
+                ui.preview_download(manifest, destination, token, mode);
             },
         );
     }
 
-    pub(super) fn prompt_passphrase(
+    fn preview_download(
         self: &Rc<Self>,
         manifest: Manifest,
         destination: PathBuf,
         token: String,
+        mode: transfer::ReceiveMode,
     ) {
+        let encrypted = manifest.encryption.is_some();
+        let low_disk = mode == transfer::ReceiveMode::LowDisk;
+        let output = destination.join(parcel::output_filename(&manifest.filename));
+        let disk_space = if low_disk {
+            format!(
+                "About {} in the destination folder",
+                parcel::human_size(manifest.size)
+            )
+        } else {
+            let cache_size = manifest.size
+                + if encrypted {
+                    manifest.parts.len() as u64 * discord_parcel::crypto::OVERHEAD
+                } else {
+                    0
+                };
+            format!(
+                "About {} in the destination folder, plus {} for cached parts",
+                parcel::human_size(manifest.size),
+                parcel::human_size(cache_size),
+            )
+        };
+        let details = adw::PreferencesGroup::builder().build();
+        for (title, subtitle) in [
+            ("File", manifest.filename.clone()),
+            ("Size", parcel::human_size(manifest.size)),
+            ("Parts", manifest.parts.len().to_string()),
+            (
+                "Encryption",
+                if encrypted {
+                    "Encrypted"
+                } else {
+                    "Not encrypted"
+                }
+                .into(),
+            ),
+            ("Save to", output.to_string_lossy().into_owned()),
+            (
+                "Download mode",
+                if low_disk { "Low-disk" } else { "Standard" }.into(),
+            ),
+            ("Estimated disk space", disk_space),
+        ] {
+            details.add(
+                &adw::ActionRow::builder()
+                    .title(title)
+                    .subtitle(subtitle)
+                    .use_markup(false)
+                    .build(),
+            );
+        }
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
+        content.append(&details);
         let password = adw::PasswordEntryRow::builder()
             .title("Decryption passphrase")
             .build();
-        let group = adw::PreferencesGroup::new();
-        group.add(&password);
+        if encrypted {
+            password.set_text(&self.receive_password.text());
+            let group = adw::PreferencesGroup::new();
+            if low_disk {
+                group.set_description(Some(
+                    "Low-disk mode leaves decrypted partial content on disk, even after cancellation.",
+                ));
+            }
+            group.add(&password);
+            content.append(&group);
+        }
+        let scroll = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .width_request(550)
+            .propagate_natural_height(true)
+            .max_content_height(650)
+            .child(&content)
+            .build();
         let dialog = adw::AlertDialog::builder()
-            .heading("This parcel is encrypted")
-            .body(format!(
-                "Enter the sender’s passphrase to restore {}.",
-                manifest.filename
-            ))
-            .extra_child(&group)
+            .heading("Preview download")
+            .follows_content_size(true)
+            .presentation_mode(adw::DialogPresentationMode::Floating)
+            .extra_child(&scroll)
             .build();
         dialog.add_response("cancel", "Cancel");
-        dialog.add_response("decrypt", "Decrypt and Download");
+        dialog.add_response("download", "Download and Restore");
         dialog.set_close_response("cancel");
-        dialog.set_default_response(Some("decrypt"));
-        dialog.set_response_appearance("decrypt", adw::ResponseAppearance::Suggested);
-        dialog.set_response_enabled("decrypt", false);
+        dialog.set_default_response(Some("download"));
+        dialog.set_response_appearance("download", adw::ResponseAppearance::Suggested);
+        dialog.set_response_enabled("download", !encrypted || !password.text().is_empty());
         let weak_dialog = dialog.downgrade();
         password.connect_changed(move |entry| {
             if let Some(dialog) = weak_dialog.upgrade() {
-                dialog.set_response_enabled("decrypt", !entry.text().is_empty());
+                dialog.set_response_enabled("download", !encrypted || !entry.text().is_empty());
             }
         });
         let ui = self.clone();
-        dialog.connect_response(Some("decrypt"), move |_, _| {
-            let passphrase = password.text().to_string();
+        dialog.connect_response(Some("download"), move |_, _| {
+            let passphrase = encrypted.then(|| password.text().to_string());
             password.set_text("");
-            if !passphrase.is_empty() {
+            if passphrase.as_ref().is_none_or(|value| !value.is_empty()) {
                 ui.download_manifest(
                     manifest.clone(),
                     destination.clone(),
                     token.clone(),
-                    Some(passphrase),
+                    passphrase,
+                    mode,
                 );
             }
         });
@@ -154,15 +243,8 @@ impl Ui {
         destination: PathBuf,
         token: String,
         password: Option<String>,
+        mode: transfer::ReceiveMode,
     ) {
-        let mode = if self.low_disk.is_active() {
-            if manifest.encryption.is_some() {
-                self.toast("Low-disk mode leaves decrypted partial content on disk, even after cancellation.");
-            }
-            transfer::ReceiveMode::LowDisk
-        } else {
-            transfer::ReceiveMode::Standard
-        };
         self.run_job(move |cancel, progress| {
             let output = transfer::download_with_options(
                 &manifest,
@@ -185,4 +267,12 @@ impl Ui {
             })
         });
     }
+}
+
+fn validate_receive_manifest(manifest: &Manifest) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        manifest.parts.iter().all(|part| part.remote.is_some()),
+        "This parcel is missing Discord attachment information for one or more parts."
+    );
+    Ok(())
 }
