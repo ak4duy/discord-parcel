@@ -922,32 +922,9 @@ fn parse_snowflake(value: &str, kind: &str) -> Result<u64> {
 }
 
 fn parse_message_link(link: &str) -> Result<(ChannelId, MessageId)> {
-    let link = link.trim();
+    let (channel, message) = crate::discord::parse_message_link(link)?;
 
-    let marker = "/channels/";
-
-    let start = link
-        .find(marker)
-        .context("This is not a Discord message link.")?
-        + marker.len();
-
-    let path = link[start..].split(['?', '#']).next().unwrap_or_default();
-
-    let mut parts = path.split('/').filter(|part| !part.is_empty());
-
-    let _guild = parts
-        .next()
-        .context("This Discord message link is incomplete.")?;
-
-    let channel = parts
-        .next()
-        .context("This Discord message link is incomplete.")?;
-
-    let message = parts
-        .next()
-        .context("This Discord message link is incomplete.")?;
-
-    Ok((parse_channel_id(channel)?, parse_message_id(message)?))
+    Ok((parse_channel_id(&channel)?, parse_message_id(&message)?))
 }
 
 fn runtime() -> Result<tokio::runtime::Runtime> {
